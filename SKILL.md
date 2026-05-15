@@ -44,6 +44,29 @@ Located at `{install_dir}\LTspiceHelp\`. Each `.htm` file covers one topic. Cons
 
 ---
 
+## LTspice Launch Smoke Test
+
+When using a new LTspice executable, a new agent sandbox, or a launch mode that has not worked in the current session, run this quick `.cir` deck before long simulations:
+
+```spice
+* LTspice launch smoke test
+V1 in 0 1
+R1 in out 1k
+C1 out 0 1u
+.tran 1m
+.end
+```
+
+Run it with:
+
+```powershell
+"<ltspice_path>" -b ltspice_smoke_test.cir
+```
+
+Proceed only if LTspice creates `.log` and `.raw` files. Do not use `-sync` for this; LTspice 26 documents `-sync` as component-library update.
+
+---
+
 ## Converter Setup (First Run)
 
 `ltspice_raw2csv.exe` is not distributed in the repository; it must be built locally once.
@@ -126,24 +149,33 @@ After conversion:
 
 ## Procedure — Standard Simulation (TRAN / AC / DC)
 
-### Step 1 — Run LTspice
+### Step 1 — Prepare the Simulation Deck
 
-```
-"<ltspice_path>" -run -b <input_file>
-```
+Use the LTspice command form that matches the input type:
 
-* `-run`: start simulation
-* `-b`: batch mode (no GUI)
-* Works for both `.asc` and `.net`
+* `.net` / `.cir`: run the deck directly with batch mode:
+
+  ```
+  "<ltspice_path>" -b <input_file>
+  ```
+
+* `.asc`: first generate the netlist, then run the generated `.net` deck:
+
+  ```
+  "<ltspice_path>" -netlist <input_file>
+  "<ltspice_path>" -b <generated_netlist>
+  ```
+
+Direct schematic simulation with `-Run <schematic.asc>` is acceptable only when netlist generation is not suitable or the user explicitly requests it. Avoid the older blanket form `-run -b <input_file>` unless a local smoke test has proven it works in the current LTspice version and launch environment.
 
 ---
 
 ### Step 2 — Determine Output Files
 
-LTspice writes outputs to the same directory as the input, using the same base name:
+LTspice writes outputs to the same directory as the simulated deck, using the same base name. If an `.asc` file was netlisted first, use the generated `.net` base name:
 
 ```
-C:\sim\buck.asc  →  C:\sim\buck.raw
+C:\sim\buck.net  →  C:\sim\buck.raw
                      C:\sim\buck.op.raw  (if .op analysis present)
                      C:\sim\buck.log
 ```
@@ -152,7 +184,9 @@ C:\sim\buck.asc  →  C:\sim\buck.raw
 
 ### Step 3 — Wait for Simulation Completion
 
-LTspice in batch mode (`-b`) runs **synchronously** — the process exits only when the simulation finishes (or fails). Simply wait for the process to return; no polling required.
+Prefer direct command invocation and wait for the LTspice process to return with a bounded timeout appropriate for the circuit. Do not use `Start-Process -WindowStyle Hidden` by default; LTspice 26 has been observed to hang in hidden/sandboxed launches before producing `.log` or `.raw` files.
+
+If a launched LTspice process times out, stop only the process ID that was started for this simulation, then inspect whether `.log` or `.raw` files were created. Treat a timeout with no outputs as a launch-environment failure, not as proof that the circuit is invalid.
 
 ---
 
@@ -189,11 +223,12 @@ Build the converter command:
 
 FRA (Frequency Response Analysis) uses a different output structure. The `.fra` directive is controlled by `@` device instances in the circuit. See `REFERENCE.md §2 .FRA` and `§3 @ / &` for syntax.
 
-### Step 1 — Run LTspice (same command)
+### Step 1 — Prepare and Run LTspice
 
-```
-"<ltspice_path>" -run -b <input_file>
-```
+Use the same launch rules as standard simulations:
+
+* `.net` / `.cir`: `"<ltspice_path>" -b <input_file>`
+* `.asc`: `"<ltspice_path>" -netlist <input_file>`, then `"<ltspice_path>" -b <generated_netlist>`
 
 ### Step 2 — Determine FRA Output Files
 
@@ -242,26 +277,30 @@ When asked to modify a circuit before simulating:
 
 | Flag | Effect |
 |------|--------|
-| `-run` | Start simulation |
-| `-b` | Batch mode (no GUI) |
+| `-b` | Run a `.net` / `.cir` deck in batch mode |
+| `-Run` | Start simulating a schematic opened on the command line |
 | `-netlist` | Export `.asc` to `.net` only, no simulation |
+| `-sync` | Update component libraries; do not use as a wait/synchronization flag |
 
-Do NOT use `-ascii` (severe performance degradation) or GUI flags (`-big`, `-max`).
+Do NOT use `-ascii` (severe performance degradation), `-sync` as a wait flag, or GUI flags (`-big`, `-max`).
 
 ---
 
 ## File Behavior Rules
 
-* All output files are written to the same directory as the input file
-* Output base name matches input base name
-* Example: `buck.asc` → `buck.raw`, `buck.op.raw`, `buck.log`
+* All output files are written to the same directory as the simulated deck
+* Output base name matches the deck base name
+* Example: `buck.net` → `buck.raw`, `buck.op.raw`, `buck.log`
 
 ---
 
 ## Smart Behavior (Agent Guidelines)
 
 * Prefer `.asc` over `.net` when both exist
-* Auto-derive all output filenames from the input path
+* For `.asc`, prefer generating a `.net` with `-netlist` and simulating that deck with `-b`
+* For `.net` / `.cir`, use `ltspice.exe -b <deck>` rather than `-run -b`
+* Auto-derive all output filenames from the simulated deck path
+* If LTspice launch behavior is unproven in the current environment, run a trivial smoke-test deck with `-b` before long simulations
 * If traces not specified: run `ltspice_raw2csv.exe <file>.raw -d` first and suggest available traces
 * Use `-q` and `-f` by default unless the user explicitly asks otherwise
 * Use `--op` flag (single converter call) instead of two separate calls when exporting operating point
@@ -274,6 +313,7 @@ Do NOT use `-ascii` (severe performance degradation) or GUI flags (`-big`, `-max
 | Symptom | Likely cause | Action |
 |---------|-------------|--------|
 | `.raw` not created | Simulation failure or bad netlist | Read `.log`, show relevant error lines to user |
+| No `.log` or `.raw` after timeout | LTspice launch/sandbox failure | Report launch failure; retry direct visible/elevated launch before blaming the circuit |
 | `.op.raw` not created | No `.op` analysis in netlist | Not an error; skip silently |
 | `.fra_*.raw` not created | FRA simulation failed or no `@` device | Check `.log`; confirm `@` device exists in schematic |
 | Converter: "No valid traces" | Trace name mismatch (case-sensitive) | Run `-d` to list exact names, retry |
