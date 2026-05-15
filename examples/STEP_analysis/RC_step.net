@@ -1,0 +1,8 @@
+* RC Low-Pass Filter - .STEP resistance sweep
+V1 vin 0 PULSE(0 1 0 1n 1n 0.5m 1m)
+R1 vin vout {R}
+C1 vout 0 1n
+.STEP param R 1k 3k 1k
+.TRAN 3m
+.backanno
+.end

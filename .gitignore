@@ -1,0 +1,8 @@
+examples/*/output/
+converter/ltspice_raw2csv.exe
+converter/.venv/
+converter/build/
+converter/dist/
+converter/*.spec
+converter/__pycache__/
+converter/*.pyc

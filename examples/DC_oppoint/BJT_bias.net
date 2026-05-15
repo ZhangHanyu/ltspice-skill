@@ -1,0 +1,17 @@
+* Two-Stage BJT Common-Emitter Bias Circuit
+* Stage 1 Q1: voltage-divider bias, Vcc=12V
+* Stage 2 Q2: collector of Q1 drives base of Q2 (direct coupling)
+* Demonstrates .OP simulation; inspect Ic(Q1) and Ic(Q2)
+VCC vcc 0 12
+R1 vcc b1 100k
+R2 b1 0 33k
+RC1 vcc c1 4.7k
+RE1 e1 0 1k
+Q1 c1 b1 e1 2N3904
+RC2 vcc c2 2.2k
+RE2 e2 0 470
+Q2 c2 c1 e2 2N3904
+.model 2N3904 NPN(Bf=200 Vaf=74 Is=6.73f Xtb=1.5 Br=3.906 Cjc=3.638p Cje=4.493p Rb=10)
+.op
+.backanno
+.end

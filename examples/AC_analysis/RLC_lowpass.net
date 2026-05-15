@@ -1,0 +1,12 @@
+* 2nd-Order Passive RLC Lowpass Filter
+* Fc = 1/(2*pi*sqrt(L*C)) = approx 15.9 kHz
+* Q = (1/Rs)*sqrt(L/C) = approx 1.0 (near critically damped with Rs=50)
+* Demonstrates .AC simulation and complex CSV export
+Vin in 0 AC 1
+Rs in n1 50
+L1 n1 out 10m
+C1 out 0 10n
+RL out 0 1k
+.AC dec 101 100 10Meg
+.backanno
+.end

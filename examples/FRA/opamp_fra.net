@@ -1,0 +1,16 @@
+* Op-Amp Inverting Amplifier - FRA Loop Gain Measurement
+* Gain = -R2/R1 = -10 (20 dB), GBW = 10 MHz (UniversalOpAmp2 / level2)
+* Loop is broken between node A (op-amp output) and node B (R1 input)
+* FRA sweeps 100 Hz to 10 MHz, measures open-loop gain T(s)
+V1 VCC 0 5
+V2 VEE 0 -5
+R1 B N_inv 1k
+R2 N_inv A 10k
+XU1 0 N_inv VCC VEE A level2 Avol=1Meg GBW=10Meg Slew=10Meg Ilimit=25m Rail=0 Vos=0 En=0 Enk=0 In=0 Ink=0 Rin=500Meg
+C_load A 0 100p
+* @device: output=A input=B; positional args after oct=4: nmax fcoarse ncoarse fmax nsimult
+@1 A B fstart=100 fend=10Meg oct=4 fcoarse=10k nmax=50k 3 500k 1 pp0=100m pp1=10m f0=10k f1=500k tavgmin=100u tsettle=2u acmag=1
+.fra
+.lib UniversalOpAmp2.lib
+.backanno
+.end
