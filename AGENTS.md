@@ -4,7 +4,7 @@ This file provides development guidance for agents working on this repository.
 
 ## What This Is
 
-An agent skill for automating LTspice circuit simulations. It runs LTspice in batch mode (synchronously), validates the log, then converts the binary `.raw` output to CSV. There are two artifacts: `converter/ltspice_raw2csv.py` (the converter source) and `converter/ltspice_raw2csv.exe` (a locally-built Windows executable compiled with PyInstaller - not distributed in the repo; build it once with the commands below).
+An agent skill for automating LTspice circuit simulations. It runs LTspice through `scripts/run_ltspice.ps1`, validates the log, then converts the binary `.raw` output to CSV. There are three main artifacts: `scripts/run_ltspice.ps1` (the LTspice runner), `converter/ltspice_raw2csv.py` (the converter source), and `converter/ltspice_raw2csv.exe` (a locally-built Windows executable compiled with PyInstaller - not distributed in the repo; build it once with the commands below).
 
 The canonical skill definition lives in `SKILL.md` - this is what agents read to know the full procedure, all supported parameters, defaults, and behavior guidelines. Read it first when modifying the skill's behavior.
 
@@ -25,10 +25,12 @@ python ltspice_raw2csv.py <file.raw> -d      # metadata + variable list
 python ltspice_raw2csv.py <file.raw> -s      # metadata only
 ```
 
-**Run LTspice simulation (the skill uses this form):**
+**Run LTspice simulation (preferred runner):**
 ```powershell
-& "<path_to_LTspice.exe>" -run -b <file.asc|.net>
+.\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile "<file.asc|file.net|file.cir>" -ExpectedOutput standard -TimeoutSeconds 3600
 ```
+
+The runner handles `.asc` netlisting, waits for generated decks and RAW files to stabilize, checks for `Total elapsed time`, and returns nonzero on LTspice failures. Use `-ExpectedOutput fra` for `.FRA` simulations and `-ExpectedOutput none` only for workflows that intentionally do not produce RAW output.
 
 **Rebuild the executable** (run once to create the venv, then use it for all subsequent builds):
 ```powershell

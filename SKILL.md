@@ -44,6 +44,29 @@ Located at `{install_dir}\LTspiceHelp\`. Each `.htm` file covers one topic. Cons
 
 ---
 
+## LTspice Launch Smoke Test
+
+When using a new LTspice executable, a new agent sandbox, or a launch mode that has not worked in the current session, run this quick `.cir` deck before long simulations:
+
+```spice
+* LTspice launch smoke test
+V1 in 0 1
+R1 in out 1k
+C1 out 0 1u
+.tran 1m
+.end
+```
+
+Run it with:
+
+```powershell
+"<ltspice_path>" -b ltspice_smoke_test.cir
+```
+
+Proceed only if LTspice creates `.log` and `.raw` files. Do not use `-sync` for this; current LTspice help documents `-sync` as component-library update.
+
+---
+
 ## Converter Setup (First Run)
 
 `ltspice_raw2csv.exe` is not distributed in the repository; it must be built locally once.
@@ -126,24 +149,30 @@ After conversion:
 
 ## Procedure — Standard Simulation (TRAN / AC / DC)
 
-### Step 1 — Run LTspice
+### Step 1 — Run LTspice with the Runner
 
-```
-"<ltspice_path>" -run -b <input_file>
+Use the bundled runner script as the preferred execution interface:
+
+```powershell
+.\scripts\run_ltspice.ps1 `
+  -LtspicePath "<ltspice_path>" `
+  -InputFile "<input_file>" `
+  -ExpectedOutput standard `
+  -TimeoutSeconds 3600
 ```
 
-* `-run`: start simulation
-* `-b`: batch mode (no GUI)
-* Works for both `.asc` and `.net`
+The runner handles `.asc` netlist generation, waits for generated `.net` files to stabilize, invokes LTspice with the documented `-b` deck form, waits for `Total elapsed time` in the log, confirms RAW output stability, checks fatal log patterns, and returns nonzero on failure.
+
+Use raw LTspice commands only when `scripts/run_ltspice.ps1` is unavailable or when debugging the runner itself. Direct schematic simulation with `-Run <schematic.asc>` is acceptable only when netlist generation is not suitable or the user explicitly requests it.
 
 ---
 
 ### Step 2 — Determine Output Files
 
-LTspice writes outputs to the same directory as the input, using the same base name:
+LTspice writes outputs to the same directory as the simulated deck, using the same base name. If an `.asc` file was netlisted first, use the generated `.net` base name:
 
 ```
-C:\sim\buck.asc  →  C:\sim\buck.raw
+C:\sim\buck.net  →  C:\sim\buck.raw
                      C:\sim\buck.op.raw  (if .op analysis present)
                      C:\sim\buck.log
 ```
@@ -152,13 +181,13 @@ C:\sim\buck.asc  →  C:\sim\buck.raw
 
 ### Step 3 — Wait for Simulation Completion
 
-LTspice in batch mode (`-b`) runs **synchronously** — the process exits only when the simulation finishes (or fails). Simply wait for the process to return; no polling required.
+The runner does this for normal use. Do not treat shell/process return alone as completion: LTspice batch mode can return control while background work is still writing `.raw`, `.log`, or generated `.net` files. Completion is valid only after the log contains `Total elapsed time` and expected output files are stable.
 
 ---
 
 ### Step 4 — Validate Simulation Success
 
-Check that `.raw` exists. Then read `.log` and scan for any of these failure indicators:
+Check that `.raw` exists and the `.log` contains `Total elapsed time`. Then read `.log` and scan for any of these failure indicators:
 
 * `Error:`
 * `Analysis failed`
@@ -167,7 +196,7 @@ Check that `.raw` exists. Then read `.log` and scan for any of these failure ind
 * `Singular matrix`
 * `Time step too small`
 
-If `.raw` is missing or `.log` contains any of the above → simulation failed; report the relevant log lines to the user.
+If the runner exits nonzero, report its error and relevant log lines to the user. If running LTspice manually, treat missing `.raw`, missing `Total elapsed time`, or any fatal log pattern as failed or incomplete simulation.
 
 ---
 
@@ -189,10 +218,16 @@ Build the converter command:
 
 FRA (Frequency Response Analysis) uses a different output structure. The `.fra` directive is controlled by `@` device instances in the circuit. See `REFERENCE.md §2 .FRA` and `§3 @ / &` for syntax.
 
-### Step 1 — Run LTspice (same command)
+### Step 1 — Run LTspice with the Runner
 
-```
-"<ltspice_path>" -run -b <input_file>
+Use the same runner script with FRA output mode:
+
+```powershell
+.\scripts\run_ltspice.ps1 `
+  -LtspicePath "<ltspice_path>" `
+  -InputFile "<input_file>" `
+  -ExpectedOutput fra `
+  -TimeoutSeconds 7200
 ```
 
 ### Step 2 — Determine FRA Output Files
@@ -206,7 +241,7 @@ Note: FRA does NOT produce `buck.raw`. Check for `buck.fra_<n>.raw` instead.
 
 ### Step 3 — Wait for Completion
 
-Same as standard simulation: wait for the LTspice process to exit. FRA simulations can take significantly longer than transient simulations — this is expected.
+Same as standard simulation: let the runner wait for the `.log` completion marker (`Total elapsed time`) and stable FRA `.raw` output before converting. FRA simulations can take significantly longer than transient simulations — this is expected.
 
 ### Step 4 — Validate
 
@@ -242,26 +277,38 @@ When asked to modify a circuit before simulating:
 
 | Flag | Effect |
 |------|--------|
-| `-run` | Start simulation |
-| `-b` | Batch mode (no GUI) |
+| `-b` | Run a `.net` / `.cir` deck in batch mode |
+| `-Run` | Start simulating a schematic opened on the command line |
 | `-netlist` | Export `.asc` to `.net` only, no simulation |
+| `-sync` | Update component libraries; do not use as a wait/synchronization flag |
 
-Do NOT use `-ascii` (severe performance degradation) or GUI flags (`-big`, `-max`).
+Do NOT use `-ascii` (severe performance degradation), `-sync` as a wait flag, or GUI flags (`-big`, `-max`).
+
+When invoking LTspice from PowerShell, prefer literal absolute path strings. If using `Resolve-Path`, pass its `.Path` string rather than the raw PathInfo object:
+
+```powershell
+$deck = (Resolve-Path -LiteralPath ".\circuit.net").Path
+& "<ltspice_path>" -b $deck
+```
 
 ---
 
 ## File Behavior Rules
 
-* All output files are written to the same directory as the input file
-* Output base name matches input base name
-* Example: `buck.asc` → `buck.raw`, `buck.op.raw`, `buck.log`
+* All output files are written to the same directory as the simulated deck
+* Output base name matches the deck base name
+* Example: `buck.net` → `buck.raw`, `buck.op.raw`, `buck.log`
 
 ---
 
 ## Smart Behavior (Agent Guidelines)
 
+* Use `scripts/run_ltspice.ps1` for LTspice execution by default
 * Prefer `.asc` over `.net` when both exist
-* Auto-derive all output filenames from the input path
+* Let the runner generate `.net` files from `.asc` and simulate decks with `-b`
+* Auto-derive all output filenames from the simulated deck path
+* If LTspice launch behavior is unproven in the current environment, run a trivial smoke-test deck through the runner before long simulations
+* Before converting, require successful runner completion; it checks `Total elapsed time` and output stability
 * If traces not specified: run `ltspice_raw2csv.exe <file>.raw -d` first and suggest available traces
 * Use `-q` and `-f` by default unless the user explicitly asks otherwise
 * Use `--op` flag (single converter call) instead of two separate calls when exporting operating point
@@ -274,6 +321,9 @@ Do NOT use `-ascii` (severe performance degradation) or GUI flags (`-big`, `-max
 | Symptom | Likely cause | Action |
 |---------|-------------|--------|
 | `.raw` not created | Simulation failure or bad netlist | Read `.log`, show relevant error lines to user |
+| Runner exits nonzero | Simulation, launch, timeout, or log failure | Report runner error and relevant log lines |
+| `.raw` exists but `.log` lacks `Total elapsed time` | Simulation still running or incomplete | Do not convert; use runner or wait for completion marker |
+| No `.log` or `.raw` after timeout | LTspice launch/sandbox failure | Report launch failure; retry direct visible/elevated launch or runner smoke test before blaming the circuit |
 | `.op.raw` not created | No `.op` analysis in netlist | Not an error; skip silently |
 | `.fra_*.raw` not created | FRA simulation failed or no `@` device | Check `.log`; confirm `@` device exists in schematic |
 | Converter: "No valid traces" | Trace name mismatch (case-sensitive) | Run `-d` to list exact names, retry |
@@ -300,6 +350,6 @@ A `.fra` simulation does not produce `{name}.raw`. Do not check for it; check fo
 
 ## Security Constraints
 
-* Execute only: LTspice executable and `ltspice_raw2csv.exe`
+* Execute only: `scripts/run_ltspice.ps1`, LTspice executable, and `ltspice_raw2csv.exe`
 * Do not execute arbitrary shell commands
 * Validate all file paths before execution

@@ -14,6 +14,8 @@ Generated files land in `output/` (gitignored; re-running the example overwrites
 - `output/*.log` — Simulation log
 - `output/*.csv` — Converted waveform data
 
+Use `scripts/run_ltspice.ps1` to run LTspice; it waits for generated netlists, the log completion marker, and stable RAW output before returning.
+
 ---
 
 ## TRAN_analysis — Transient Analysis (RC Filter)
@@ -22,7 +24,7 @@ Simple RC low-pass filter. Demonstrates basic `.TRAN` simulation and CSV export.
 
 ```powershell
 # Run from examples/TRAN_analysis/ directory
-LTspice.exe -run -b .\RC_filter.asc
+..\..\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile .\RC_filter.asc -ExpectedOutput standard
 Move-Item RC_filter.raw, RC_filter.op.raw, RC_filter.log .\output\
 ..\..\converter\ltspice_raw2csv.exe .\output\RC_filter.raw -d
 ..\..\converter\ltspice_raw2csv.exe .\output\RC_filter.raw -o .\output\RC_filter.csv --traces "time,V(vin),V(vout)" -q -f
@@ -36,7 +38,7 @@ Move-Item RC_filter.raw, RC_filter.op.raw, RC_filter.log .\output\
 
 ```powershell
 # Run from examples/AC_analysis/ directory
-LTspice.exe -run -b .\RLC_lowpass.net
+..\..\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile .\RLC_lowpass.net -ExpectedOutput standard
 Move-Item RLC_lowpass.raw, RLC_lowpass.op.raw, RLC_lowpass.log .\output\
 
 # Real/imaginary columns (default)
@@ -54,7 +56,7 @@ Two-stage direct-coupled BJT common-emitter bias circuit. Demonstrates `.OP` sim
 
 ```powershell
 # Run from examples/DC_oppoint/ directory
-LTspice.exe -run -b .\BJT_bias.net
+..\..\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile .\BJT_bias.net -ExpectedOutput standard
 Move-Item BJT_bias.raw, BJT_bias.log .\output\
 ..\..\converter\ltspice_raw2csv.exe .\output\BJT_bias.raw -o .\output\BJT_bias.csv --traces "V(c1),V(c2),Ic(Q1),Ic(Q2)" -q -f
 ```
@@ -69,7 +71,7 @@ Note: the `.log` file must be present alongside `.raw` for step boundaries and p
 
 ```powershell
 # Run from examples/STEP_analysis/ directory
-LTspice.exe -run -b .\RC_step.net
+..\..\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile .\RC_step.net -ExpectedOutput standard
 Move-Item RC_step.raw, RC_step.op.raw, RC_step.log .\output\
 
 # All steps — prepends 'step' and 'r' columns
@@ -90,7 +92,7 @@ Note: FRA produces `opamp_fra.fra_1.raw` (not `opamp_fra.raw`). The background t
 
 ```powershell
 # Run from examples/FRA/ directory
-LTspice.exe -run -b .\opamp_fra.net
+..\..\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile .\opamp_fra.net -ExpectedOutput fra -TimeoutSeconds 7200
 Move-Item opamp_fra.fra_1.raw, opamp_fra.op.raw, opamp_fra.log .\output\
 # Delete large background transient
 Remove-Item opamp_fra.raw -ErrorAction SilentlyContinue
