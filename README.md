@@ -98,6 +98,7 @@ The agent uses `SKILL.md` as its procedure guide and `REFERENCE.md` for circuit 
 | `REFERENCE.md` | LTspice circuit syntax reference (netlists, directives, `.asc` format) |
 | `AGENTS.md` | Agent-neutral development guide for maintainers and coding agents |
 | `CLAUDE.md` | Claude Code compatibility pointer to `AGENTS.md` and `SKILL.md` |
+| `scripts/` | Helper scripts, including the robust LTspice completion runner |
 | `converter/` | `ltspice_raw2csv.py` source + `README.md` + build instructions |
 | `examples/` | Five worked examples: TRAN, AC, DC, `.STEP`, FRA |
 
@@ -109,7 +110,7 @@ See [`examples/README.md`](examples/README.md) for runnable commands for each si
 
 This repository uses a dual license:
 
-- **Skill definition, reference docs, development guide, and examples** (`SKILL.md`, `REFERENCE.md`, `AGENTS.md`, `CLAUDE.md`, `examples/`) - [MIT](LICENSE)
+- **Skill definition, reference docs, development guide, helper scripts, and examples** (`SKILL.md`, `REFERENCE.md`, `AGENTS.md`, `CLAUDE.md`, `scripts/`, `examples/`) - [MIT](LICENSE)
 - **Converter** (`converter/`) - [GPL-3.0](converter/LICENSE)
 
 The converter is GPL-3.0 because it depends on [PyLTSpice](https://github.com/nunobrum/PyLTSpice) (GPL-3.0). The executable is not distributed; each user builds it locally from source.
