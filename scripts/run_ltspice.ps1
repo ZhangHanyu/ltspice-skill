@@ -27,31 +27,34 @@ function Get-BasePath {
   return [System.IO.Path]::Combine($directory, $stem)
 }
 
-function Wait-FileStable {
+function Test-FileLockFree {
+  param([string]$Path)
+  if (-not (Test-Path -LiteralPath $Path)) { return $false }
+  foreach ($access in @([System.IO.FileAccess]::ReadWrite, [System.IO.FileAccess]::Read)) {
+    try {
+      $stream = [System.IO.File]::Open(
+        $Path, [System.IO.FileMode]::Open, $access, [System.IO.FileShare]::None)
+      $stream.Dispose()
+      return $true
+    } catch [System.UnauthorizedAccessException] { continue }
+      catch { return $false }
+  }
+  return $false
+}
+
+function Wait-NetlistReady {
   param(
     [string]$Path,
     [datetime]$Deadline,
-    [datetime]$NotBefore = [datetime]::MinValue,
-    [int]$RequiredStableCount = 2
+    [datetime]$NotBefore = [datetime]::MinValue
   )
-
-  $lastSize = -1
-  $stableCount = 0
 
   while ((Get-Date) -lt $Deadline) {
     $item = Get-Item -LiteralPath $Path -ErrorAction SilentlyContinue
     $isFresh = $item -and $item.LastWriteTime -ge $NotBefore
-    $size = if ($isFresh) { $item.Length } else { -1 }
 
-    if ($size -gt 0 -and $size -eq $lastSize) {
-      $stableCount++
-    } else {
-      $stableCount = 0
-      $lastSize = $size
-    }
-
-    if ($stableCount -ge $RequiredStableCount) {
-      return $true
+    if ($isFresh) {
+      if (Test-FileLockFree -Path $Path) { return $true }
     }
 
     Start-Sleep -Seconds $PollSeconds
@@ -124,9 +127,7 @@ function Wait-SimulationComplete {
 
   $logPath = "$BasePath.log"
   $standardRaw = "$BasePath.raw"
-  $lastSize = -1
-  $stableCount = 0
-  $lastRawPath = $null
+  $resolvedRawPath = $null
 
   while ((Get-Date) -lt $Deadline) {
     $logItem = Get-Item -LiteralPath $logPath -ErrorAction SilentlyContinue
@@ -138,40 +139,34 @@ function Wait-SimulationComplete {
       throw ("LTspice log contains failure indicators:`n" + ($fatalLines -join "`n"))
     }
 
-    $rawPath = $null
-    if ($ExpectedOutput -eq "standard") {
-      $rawPath = $standardRaw
-    } elseif ($ExpectedOutput -eq "fra") {
-      $fraRaw = Get-ChildItem -LiteralPath ([System.IO.Path]::GetDirectoryName($BasePath)) `
-        -Filter "$([System.IO.Path]::GetFileName($BasePath)).fra_*.raw" `
-        -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTime -ge $NotBefore } |
-        Sort-Object Name |
-        Select-Object -First 1
-      if ($fraRaw) {
-        $rawPath = $fraRaw.FullName
+    if ($ExpectedOutput -eq "none") {
+      if ($hasCompletionMarker) {
+        return @{ LogPath = $logPath; RawPath = $null }
       }
-    }
-
-    $rawReady = $ExpectedOutput -eq "none"
-    if ($rawPath) {
-      $rawItem = Get-Item -LiteralPath $rawPath -ErrorAction SilentlyContinue
-      $isFresh = $rawItem -and $rawItem.LastWriteTime -ge $NotBefore
-      $size = if ($isFresh) { $rawItem.Length } else { -1 }
-      if ($rawPath -eq $lastRawPath -and $size -ge 0 -and $size -eq $lastSize) {
-        $stableCount++
-      } else {
-        $stableCount = 0
-        $lastRawPath = $rawPath
-        $lastSize = $size
+    } else {
+      # Resolve the raw path once on first discovery to avoid re-globbing each poll.
+      if (-not $resolvedRawPath) {
+        if ($ExpectedOutput -eq "standard") {
+          $candidate = Get-Item -LiteralPath $standardRaw -ErrorAction SilentlyContinue
+          if ($candidate -and $candidate.LastWriteTime -ge $NotBefore) {
+            $resolvedRawPath = $candidate.FullName
+          }
+        } elseif ($ExpectedOutput -eq "fra") {
+          $fraDir  = [System.IO.Path]::GetDirectoryName($BasePath)
+          $fraStem = [System.IO.Path]::GetFileName($BasePath)
+          $candidate = Get-ChildItem -LiteralPath $fraDir `
+            -Filter "${fraStem}.fra_*.raw" -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -ge $NotBefore } |
+            Sort-Object Name | Select-Object -First 1
+          if ($candidate) { $resolvedRawPath = $candidate.FullName }
+        }
       }
-      $rawReady = $stableCount -ge 2
-    }
 
-    if ($hasCompletionMarker -and $rawReady) {
-      return @{
-        LogPath = $logPath
-        RawPath = $rawPath
+      if ($resolvedRawPath -and $hasCompletionMarker) {
+        # Succeeds the moment LTspice releases the output file handle.
+        if (Test-FileLockFree -Path $resolvedRawPath) {
+          return @{ LogPath = $logPath; RawPath = $resolvedRawPath }
+        }
       }
     }
 
@@ -211,7 +206,7 @@ try {
     $deckPath = [System.IO.Path]::ChangeExtension($inputPath, ".net")
     $netlistStart = Get-Date
     Invoke-Ltspice -Arguments @("-netlist", $inputPath) -Deadline $deadline
-    if (-not (Wait-FileStable -Path $deckPath -Deadline $deadline -NotBefore $netlistStart)) {
+    if (-not (Wait-NetlistReady -Path $deckPath -Deadline $deadline -NotBefore $netlistStart)) {
       throw "Timed out waiting for generated netlist to stabilize: $deckPath"
     }
   } elseif ($extension -eq ".net" -or $extension -eq ".cir") {

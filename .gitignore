@@ -1,4 +1,6 @@
 examples/*/output/
+tmp/
+.claude/
 converter/ltspice_raw2csv.exe
 converter/.venv/
 converter/build/

@@ -77,7 +77,7 @@ Proceed only if LTspice creates `.log` and `.raw` files. Do not use `-sync` for 
 Test-Path "<converter_path>"
 ```
 
-**Build if missing:** Run the following from the `converter/` directory. Full commands are in `CLAUDE.md`.
+**Build if missing:** Run the following from the `converter/` directory. Full commands are in `AGENTS.md`.
 
 ```powershell
 cd <skill_root>\converter
@@ -161,7 +161,7 @@ Use the bundled runner script as the preferred execution interface:
   -TimeoutSeconds 3600
 ```
 
-The runner handles `.asc` netlist generation, waits for generated `.net` files to stabilize, invokes LTspice with the documented `-b` deck form, waits for `Total elapsed time` in the log, confirms RAW output stability, checks fatal log patterns, and returns nonzero on failure.
+The runner handles `.asc` netlist generation, waits for generated `.net` files to be fully written, invokes LTspice with the documented `-b` deck form, waits for `Total elapsed time` in the log, confirms RAW write completion via file-lock release, checks fatal log patterns, and returns nonzero on failure.
 
 Use raw LTspice commands only when `scripts/run_ltspice.ps1` is unavailable or when debugging the runner itself. Direct schematic simulation with `-Run <schematic.asc>` is acceptable only when netlist generation is not suitable or the user explicitly requests it.
 

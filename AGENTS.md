@@ -30,7 +30,7 @@ python ltspice_raw2csv.py <file.raw> -s      # metadata only
 .\scripts\run_ltspice.ps1 -LtspicePath "<path_to_LTspice.exe>" -InputFile "<file.asc|file.net|file.cir>" -ExpectedOutput standard -TimeoutSeconds 3600
 ```
 
-The runner handles `.asc` netlisting, waits for generated decks and RAW files to stabilize, checks for `Total elapsed time`, and returns nonzero on LTspice failures. Use `-ExpectedOutput fra` for `.FRA` simulations and `-ExpectedOutput none` only for workflows that intentionally do not produce RAW output.
+The runner handles `.asc` netlisting, waits for the log completion marker (`Total elapsed time`) and file-lock release on the RAW output, and returns nonzero on LTspice failures. Use `-ExpectedOutput fra` for `.FRA` simulations and `-ExpectedOutput none` only for workflows that intentionally do not produce RAW output.
 
 **Rebuild the executable** (run once to create the venv, then use it for all subsequent builds):
 ```powershell
@@ -66,9 +66,11 @@ Copy-Item dist\ltspice_raw2csv.exe ltspice_raw2csv.exe -Force
 
 ## Architecture
 
-The skill has two layers:
+The skill has three layers:
 
-**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (prefer `.asc` over `.net`, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only LTspice and the converter may be executed).
+**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (prefer `.asc` over `.net`, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only the runner, LTspice, and the converter may be executed).
+
+**Runner (`scripts/run_ltspice.ps1`)** - PowerShell script that wraps LTspice execution. Handles two-phase `.asc` → `.net` → `.raw` flow, waits for the log completion marker (`Total elapsed time`) and confirms RAW write completion via file-lock release, scans for fatal log patterns, and returns nonzero on any failure. Use `-ExpectedOutput fra` for FRA simulations.
 
 **Converter (`converter/ltspice_raw2csv.py`)** - reads LTspice binary `.raw` files via PyLTSpice, applies optional trace filtering, handles complex data in three modes (`ri` = real/imag columns, `ma` = magnitude/angle columns, `python` = Python complex literals), and writes CSV. Key functions: `raw_to_csv()` (main logic), `_process_trace()` (complex handling), `preview_short/detailed()` (inspection modes).
 
@@ -92,3 +94,11 @@ When `traces` is omitted, all traces are exported.
 - `.op.raw` (operating point) is a separate file from `.raw` (transient/AC/DC sweep). Use `--op` to export both in a single converter call; they always produce separate CSVs.
 - Trace names are case-sensitive and must match exactly what LTspice writes (e.g., `V(vout)` not `v(vout)`). The `-d` flag reveals exact names.
 - The converter raises an error if no valid traces remain after filtering; it warns (not errors) for individual missing trace names.
+
+## Testing
+
+No automated test suite. Validate changes against the examples in `examples/` — each subdirectory has a runnable circuit and documented expected results (see `examples/README.md`). For changes to `scripts/run_ltspice.ps1`, also test with a temporary long-running circuit under `tmp/` or `C:\tmp` to exercise the file-write detection window.
+
+## Licensing
+
+The converter (`converter/`) is GPL-3.0 because it depends on PyLTSpice (GPL-3.0). Everything else (`SKILL.md`, `REFERENCE.md`, `AGENTS.md`, `scripts/`, `examples/`) is MIT. Do not move converter code into the MIT-licensed portion.
