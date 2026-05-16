@@ -28,10 +28,16 @@ Located at `{install_dir}\LTspiceHelp\`. Each `.htm` file covers one topic. Cons
 
 ## Supported Input Types
 
-* `.asc` → LTspice schematic (GUI-generated, preferred)
+* `.asc` → LTspice schematic (GUI-generated)
 * `.net` / `.cir` → LTspice/SPICE netlist
 
-**Preference:** Always prefer `.asc` — it is the editable source of truth and supports back-annotation. Use `.net`/`.cir` only when `.asc` is unavailable.
+**Reading/understanding a circuit:** Prefer `.net` — pure SPICE syntax (element, nodes, value per line) with no coordinate or layout noise, and it is exactly what LTspice simulates. If only `.asc` exists, generate `.net` first:
+
+```powershell
+"<ltspice_path>" -netlist "<file.asc>"
+```
+
+**Editing/modifying a circuit:** Always edit `.asc` — it is the source of truth. LTspice overwrites `.net` when re-netlisting from `.asc`, so edits to `.net` are lost on the next schematic open or simulation run.
 
 ---
 
@@ -128,6 +134,9 @@ This takes ~30–60 seconds and produces a ~20 MB self-contained executable.
 * **export_op** (optional, default: false)
   Pass `--op` to also convert `.op.raw` to CSV in the same converter invocation. The op CSV is always written to `{csv_stem}.op.csv` (not configurable separately).
 
+* **precision** (optional, default: `6`)
+  Pass `-p N` to set the number of significant figures for waveform values. Use `-p 0` for full float precision. `time` and `frequency` axes are always written at full precision regardless of this setting.
+
 ---
 
 ## Outputs
@@ -205,7 +214,7 @@ If the runner exits nonzero, report its error and relevant log lines to the user
 Build the converter command:
 
 ```
-<converter_path> <name>.raw -o <output_csv> [--op] [--step N] [--traces "time,V(out),I(L1)"] [--complex-mode ri|ma|python] [-q] [-f]
+<converter_path> <name>.raw -o <output_csv> [--op] [--step N] [-t "time,V(out),I(L1)"] [-c ri|ma|python] [-p N] [-q] [-f]
 ```
 
 * `--op` — also exports `{name}.op.raw` to `{name}.op.csv` in the same call (use instead of a separate invocation)
@@ -250,7 +259,7 @@ Check `.log` for the same failure indicators as standard simulation.
 ### Step 5 — Convert FRA Output
 
 ```
-<converter_path> <name>.fra_1.raw -o <output_csv> --complex-mode ma [-q] [-f]
+<converter_path> <name>.fra_1.raw -o <output_csv> -c ma [-q] [-f]
 ```
 
 FRA output is complex (magnitude/phase). Use `--complex-mode ma` for Bode-plot-ready columns.
@@ -262,14 +271,13 @@ FRA output is complex (magnitude/phase). Use `--complex-mode ma` for Bode-plot-r
 When asked to modify a circuit before simulating:
 
 1. **Read `REFERENCE.md`** for the relevant syntax (directive, component, or `.asc` format).
-2. **Prefer editing `.asc`** over `.net` — changes to `.asc` persist when the user reopens LTspice; changes to `.net` are overwritten when LTspice re-netlists from `.asc`.
-3. **For netlist edits (`.net`/`.cir`):** Edit the directive or element line directly. LTspice netlist syntax is in `REFERENCE.md §1–§5`.
-4. **For schematic edits (`.asc`):** Follow the `.asc` file format rules in `REFERENCE.md §6`. Key points:
+2. **Understand the circuit** by reading the `.net` file — pure SPICE syntax is easier to parse than `.asc`. If only `.asc` exists, generate `.net` first (`"<ltspice_path>" -netlist "<file.asc>"`).
+3. **Edit `.asc`**, never `.net` — LTspice overwrites `.net` when re-netlisting from `.asc`. Follow the `.asc` file format rules in `REFERENCE.md §6`. Key points:
    - Coordinates must be on the 16-unit grid
    - `SYMATTR Value` sets component values; `SYMATTR InstName` sets instance names
    - Simulation directives live in `TEXT` records: `TEXT <x> <y> Left 2 !<directive>`
-5. **Re-run the simulation** after any modification using the standard or FRA procedure above.
-6. **Verify** by checking the `.log` for errors and inspecting the output CSV.
+4. **Re-run the simulation** after any modification using the standard or FRA procedure above.
+5. **Verify** by checking the `.log` for errors and inspecting the output CSV.
 
 ---
 
@@ -304,7 +312,8 @@ $deck = (Resolve-Path -LiteralPath ".\circuit.net").Path
 ## Smart Behavior (Agent Guidelines)
 
 * Use `scripts/run_ltspice.ps1` for LTspice execution by default
-* Prefer `.asc` over `.net` when both exist
+* To **read** a circuit: prefer `.net` (generate with `-netlist` if only `.asc` exists)
+* To **edit** a circuit: always use `.asc`
 * Let the runner generate `.net` files from `.asc` and simulate decks with `-b`
 * Auto-derive all output filenames from the simulated deck path
 * If LTspice launch behavior is unproven in the current environment, run a trivial smoke-test deck through the runner before long simulations

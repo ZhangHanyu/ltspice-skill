@@ -16,7 +16,7 @@ The canonical skill definition lives in `SKILL.md` - this is what agents read to
 ```powershell
 cd converter
 pip install -r requirements.txt
-python ltspice_raw2csv.py <file.raw> -o [output.csv] [--traces "V(out),I(R1)"] [--complex-mode ri|ma|python] [-q] [-f]
+python ltspice_raw2csv.py <file.raw> -o [output.csv] [-t "V(out),I(R1)"] [-c ri|ma|python] [-p N] [-q] [-f]
 ```
 
 **Preview traces in a `.raw` file:**
@@ -68,7 +68,7 @@ Copy-Item dist\ltspice_raw2csv.exe ltspice_raw2csv.exe -Force
 
 The skill has three layers:
 
-**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (prefer `.asc` over `.net`, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only the runner, LTspice, and the converter may be executed).
+**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (read `.net` to understand circuits, edit `.asc` to modify them, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only the runner, LTspice, and the converter may be executed).
 
 **Runner (`scripts/run_ltspice.ps1`)** - PowerShell script that wraps LTspice execution. Handles two-phase `.asc` → `.net` → `.raw` flow, waits for the log completion marker (`Total elapsed time`) and confirms RAW write completion via file-lock release, scans for fatal log patterns, and returns nonzero on any failure. Use `-ExpectedOutput fra` for FRA simulations.
 
@@ -86,6 +86,7 @@ The `.exe` is a frozen copy of the Python script; keep it in sync with the sourc
 | `export_op` | `false` |
 | `complex_mode` | `ri` |
 | `step` | all steps (omit `--step`; prefix columns added for stepped files) |
+| `precision` | `6` sig figs for waveform values (pass `-p 0` for full precision); `time`/`frequency` always full precision |
 
 When `traces` is omitted, all traces are exported.
 
@@ -97,7 +98,9 @@ When `traces` is omitted, all traces are exported.
 
 ## Testing
 
-No automated test suite. Validate changes against the examples in `examples/` — each subdirectory has a runnable circuit and documented expected results (see `examples/README.md`). For changes to `scripts/run_ltspice.ps1`, also test with a temporary long-running circuit under `tmp/` or `C:\tmp` to exercise the file-write detection window.
+No automated test suite. Validate changes against the examples in `examples/` — each subdirectory has a runnable circuit and documented expected results (see `examples/README.md`). For changes to `scripts/run_ltspice.ps1`, also test with a temporary long-running circuit under `tmp/` to exercise the file-write detection window.
+
+`tmp/` is gitignored and serves as a scratch area for temporary test circuits, change notes, and other ephemeral files that should not be committed.
 
 ## Licensing
 

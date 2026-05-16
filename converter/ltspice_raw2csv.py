@@ -85,34 +85,55 @@ def preview_detailed(raw_path: str) -> None:
 			print(f"  - {var}")
 
 
+_AXIS_TRACES = {"time", "frequency"}  # always written at full precision
+
+
+def _fmt(arr: NDArray, precision: int) -> list:
+	"""Format a numpy array for CSV output.
+
+	precision=0 uses full float precision. Otherwise rounds to N significant
+	figures using 'g' format, then converts back to float so csv.writer emits
+	the shortest exact representation of the rounded value.
+	"""
+	if precision == 0:
+		return arr.tolist()
+	return [float(f"{v:.{precision}g}") for v in arr]
+
+
 def _process_trace(
 	trace: str,
 	data: NDArray,
 	complex_mode: str,
+	precision: int = 6,
 ) -> tuple[list[str], list[list]]:
 	"""Process a single trace and return header columns and data columns."""
 	data = np.asarray(data)
+	# Axis traces (time, frequency) are always written at full precision to
+	# preserve adaptive timestep resolution and fine AC sweep points.
+	eff = 0 if trace.lower() in _AXIS_TRACES else precision
 
 	# Frequency trace: always export real part only
 	if trace.lower() == "frequency":
-		return [trace], [np.real(data).tolist()]
+		return [trace], [_fmt(np.real(data), eff)]
 
 	if not np.iscomplexobj(data):
-		return [trace], [data.tolist()]
+		return [trace], [_fmt(data, eff)]
 
 	# Complex data handling
 	if complex_mode == "ri":
 		return (
 			[f"{trace}_re", f"{trace}_im"],
-			[data.real.tolist(), data.imag.tolist()]
+			[_fmt(data.real, eff), _fmt(data.imag, eff)]
 		)
 	elif complex_mode == "ma":
 		return (
 			[f"{trace}_mag", f"{trace}_ang"],
-			[np.abs(data).tolist(), np.degrees(np.arctan2(data.imag, data.real)).tolist()]
+			[_fmt(np.abs(data), eff), _fmt(np.degrees(np.arctan2(data.imag, data.real)), eff)]
 		)
 	else:  # "python"
-		return [trace], [[str(v) for v in data]]
+		if eff == 0:
+			return [trace], [[str(v) for v in data]]
+		return [trace], [[f"{v.real:.{precision}g}{v.imag:+.{precision}g}j" for v in data]]
 
 
 def raw_to_csv(
@@ -123,6 +144,7 @@ def raw_to_csv(
 	quiet: bool = False,
 	force: bool = False,
 	step: Optional[int] = None,
+	precision: int = 6,
 ) -> None:
 	"""Convert LTspice .raw file to CSV.
 
@@ -133,10 +155,15 @@ def raw_to_csv(
 	:param quiet: Suppress output summary when True.
 	:param force: Overwrite existing output without prompting when True.
 	:param step: 1-indexed step to export. None exports all steps (with prefix columns for stepped files).
+	:param precision: Significant figures for waveform values. 0 = full float precision.
+	                  Time and frequency axes always use full precision regardless of this setting.
 	:raises OSError: If raw_path cannot be opened.
 	:raises ValueError: If no valid traces remain after filtering, or step is out of range.
 	:raises FileExistsError: If csv_path exists and the user declines overwrite.
 	"""
+	if precision < 0:
+		raise ValueError("precision must be 0 or greater")
+
 	raw = _open_raw(raw_path)
 	all_traces = raw.get_trace_names()
 
@@ -180,7 +207,7 @@ def raw_to_csv(
 	trace_header: list[str] = []
 	for trace in traces:
 		sample = np.asarray(raw.get_wave(trace, step=export_steps[0]))
-		cols, _ = _process_trace(trace, sample, complex_mode)
+		cols, _ = _process_trace(trace, sample, complex_mode, precision)
 		trace_header.extend(cols)
 
 	# Full header with optional step/param prefix
@@ -221,7 +248,7 @@ def raw_to_csv(
 			step_data_cols: list[list] = []
 			for trace in traces:
 				data = np.asarray(raw.get_wave(trace, step=step_idx))
-				_, data_cols = _process_trace(trace, data, complex_mode)
+				_, data_cols = _process_trace(trace, data, complex_mode, precision)
 				step_data_cols.extend(data_cols)
 
 			n_rows = len(step_data_cols[0]) if step_data_cols else 0
@@ -257,13 +284,13 @@ Examples:
   python ltspice_raw2csv.py simulation.raw -o output.csv
 
   # Export specific traces
-  python ltspice_raw2csv.py simulation.raw -o output.csv --traces "frequency,V(out),I(R1)"
+  python ltspice_raw2csv.py simulation.raw -o output.csv -t "frequency,V(out),I(R1)"
 
   # Export only step 2 of a .STEP sweep
   python ltspice_raw2csv.py simulation.raw -o output.csv --step 2
 
   # Convert with magnitude/angle for complex data
-  python ltspice_raw2csv.py simulation.raw -o output.csv --complex-mode ma
+  python ltspice_raw2csv.py simulation.raw -o output.csv -c ma
 
   # Convert silently without output summary
   python ltspice_raw2csv.py simulation.raw -o output.csv -q
@@ -276,16 +303,24 @@ Examples:
 		help="Convert to CSV. If specified without PATH, output file uses input name with .csv extension")
 	parser.add_argument("-s", "--short", action="store_true", help="Show short preview (metadata only, no variable list)")
 	parser.add_argument("-d", "--detailed", "--list-traces", action="store_true", help="Show detailed preview (metadata + step info + variable list)")
-	parser.add_argument("--traces", type=str, metavar="TRACES", help="Comma-separated list of trace names to export (default: all traces)")
+	parser.add_argument("-t", "--traces", type=str, metavar="TRACES", help="Comma-separated list of trace names to export (default: all traces)")
 	parser.add_argument("--step", type=int, metavar="N",
 		help="Export only step N (1-indexed). Default: export all steps for stepped files, "
 		     "with 'step' and parameter columns prepended. Use -d to list available steps.")
-	parser.add_argument("--complex-mode", type=str, choices=["ri", "ma", "python"], default="ri",
+	parser.add_argument("-c", "--complex-mode", type=str, choices=["ri", "ma", "python"], default="ri",
 		metavar="{ri,ma,python}",
 		help="""Format for complex numbers:
   ri (default)  - Real/Imaginary: columns {trace}_re, {trace}_im
   ma            - Magnitude/Angle: columns {trace}_mag, {trace}_ang (degrees)
   python        - Python format: single column with complex notation (e.g., '1+2j')""")
+	def _positive_int_or_zero(value: str) -> int:
+		n = int(value)
+		if n < 0:
+			raise argparse.ArgumentTypeError("precision must be 0 or a positive integer")
+		return n
+	parser.add_argument("-p", "--precision", type=_positive_int_or_zero, default=6, metavar="N",
+		help="Significant figures for waveform values (default: 6). Use 0 for full float precision. "
+		     "Time and frequency axes are always written at full precision.")
 	parser.add_argument("-q", "--quiet", action="store_true", help="Suppress output summary after conversion")
 	parser.add_argument("-f", "--force", action="store_true", help="Overwrite output file without confirmation")
 	parser.add_argument("--op", dest="export_op", action="store_true",
@@ -317,14 +352,14 @@ Examples:
 
 	try:
 		raw_to_csv(args.rawfile, args.csvfile, selected_traces, args.complex_mode,
-		           args.quiet, args.force, args.step)
+		           args.quiet, args.force, args.step, args.precision)
 		if args.export_op:
 			op_raw = os.path.splitext(args.rawfile)[0] + '.op.raw'
 			if os.path.exists(op_raw):
 				op_csv = os.path.splitext(args.csvfile)[0] + '.op.csv'
 				# .op.raw is never stepped; step=None (default) is always correct here
 				raw_to_csv(op_raw, op_csv, selected_traces, args.complex_mode,
-				           args.quiet, args.force)
+				           args.quiet, args.force, precision=args.precision)
 			elif not args.quiet:
 				print(f"Note: No operating point file found ({op_raw}), skipping --op export.")
 	except (ValueError, FileExistsError, OSError) as e:

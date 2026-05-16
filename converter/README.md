@@ -77,6 +77,12 @@ python ltspice_raw2csv.py simulation.raw -o output.csv --op
 
 # Force overwrite, suppress summary
 python ltspice_raw2csv.py simulation.raw -o output.csv -f -q
+
+# Reduce file size: 6 significant figures on waveform values (default)
+python ltspice_raw2csv.py simulation.raw -o output.csv -p 6 -f -q
+
+# Full float precision (backward-compatible)
+python ltspice_raw2csv.py simulation.raw -o output.csv -p 0 -f -q
 ```
 
 ### .STEP parameter sweeps
@@ -130,15 +136,18 @@ options:
   -o [PATH], --output [PATH] Convert to CSV. Omit PATH to auto-name from input.
   -s, --short                Short preview: metadata only
   -d, --detailed             Detailed preview: metadata + step info + variable list
-  --traces TRACES            Comma-separated trace names to export (default: all)
+  -t TRACES, --traces TRACES Comma-separated trace names to export (default: all)
   --step N                   Export only step N (1-indexed). Default: all steps,
                              with step/param prefix columns for stepped files.
-  --complex-mode {ri,ma,python}
+  -c, --complex-mode {ri,ma,python}
                              Format for complex traces (default: ri)
                                ri     → {trace}_re, {trace}_im
                                ma     → {trace}_mag, {trace}_ang (degrees)
                                python → single column, Python complex string
   --op                       Also export {name}.op.raw → {name}.op.csv
+  -p N, --precision N        Significant figures for waveform values (default: 6).
+                             Use 0 for full float precision. Time and frequency
+                             axes are always written at full precision.
   -q, --quiet                Suppress conversion summary
   -f, --force                Overwrite output without confirmation
   -h, --help                 Show help message
