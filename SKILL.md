@@ -11,6 +11,8 @@ description: Understand, modify, and simulate LTspice circuits. Reads and edits 
 
 When reading, writing, or modifying `.asc` schematics or `.net`/`.cir` netlists, consult `REFERENCE.md` in this directory. It covers netlist conventions, all simulation directives (including `.FRA`), all circuit element types, waveform syntax, `.MODEL`/`.SUBCKT`, and the `.asc` file format.
 
+For complete runnable workflows across TRAN, AC, DC, `.STEP`, and FRA cases, consult `examples/README.md` and the circuits under `examples/`.
+
 ---
 
 ## LTspice Installation
@@ -230,6 +232,8 @@ If the runner exits nonzero, report its error and relevant log lines to the user
 
 ### Step 5 — Convert to CSV
 
+If converter options or output behavior are unclear, consult `converter/README.md` before running `ltspice_raw2csv`.
+
 Build the converter command:
 
 ```
@@ -239,6 +243,16 @@ Build the converter command:
 * `--op` — also exports `{name}.op.raw` to `{name}.op.csv` in the same call (use instead of a separate invocation)
 * `--step N` — export only step N of a `.STEP` sweep (1-indexed); omit to export all steps with prefix columns
 * Apply `-q` and `-f` unless explicitly disabled by the user
+
+`-o` is a flag, not a second positional output argument:
+
+```powershell
+# Correct
+& "<converter_path>" "<name>.raw" -o "<output_csv>" -q -f
+
+# Wrong: output CSV is not positional
+& "<converter_path>" "<name>.raw" "<output_csv>"
+```
 
 ---
 
@@ -296,6 +310,7 @@ When asked to modify a circuit before simulating:
    - `SYMATTR Value` sets component values; `SYMATTR InstName` sets instance names
    - Simulation directives live in `TEXT` records: `TEXT <x> <y> Left 2 !<directive>`
    - Read and write the `.asc` as Windows-1252 only; never save it as UTF-8
+   - For large circuits, add `.save` directives to limit saved traces and reduce `.raw` size/conversion time, e.g. `.save V(out) I(L1) I(L2)`
 4. **Re-run the simulation** after any modification using the standard or FRA procedure above.
 5. **Verify** by checking the `.log` for errors and inspecting the output CSV.
 
@@ -342,6 +357,18 @@ $deck = (Resolve-Path -LiteralPath ".\circuit.net").Path
 * Use `-q` and `-f` by default unless the user explicitly asks otherwise
 * Use `--op` flag (single converter call) instead of two separate calls when exporting operating point
 * For FRA: use `--complex-mode ma` by default (Bode-plot-ready output)
+
+---
+
+## Parameter Sweep Workflow
+
+For `.STEP` studies:
+
+1. Add or verify the `.STEP` directive in the circuit, then simulate normally.
+2. Run the converter detailed preview (`-d`) to list step count and parameters.
+3. Export all steps by omitting `--step`; the CSV includes `step` and parameter prefix columns.
+4. For per-step files, loop over `--step N` and write distinct CSV names.
+5. For analysis in Python, group the all-step CSV by the `step` column.
 
 ---
 

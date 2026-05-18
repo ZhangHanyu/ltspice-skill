@@ -223,7 +223,13 @@ def raw_to_csv(
 
 	# Check overwrite
 	if os.path.exists(csv_path) and not force:
-		response = input(f"File exists: {csv_path}\nOverwrite? (y/n): ").strip().lower()
+		try:
+			response = input(f"File exists: {csv_path}\nOverwrite? (y/n): ").strip().lower()
+		except EOFError as e:
+			raise FileExistsError(
+				f"Output file exists and overwrite was not confirmed: {csv_path}. "
+				"Use -f/--force for non-interactive conversion."
+			) from e
 		if response != 'y':
 			raise FileExistsError(f"Conversion cancelled: {csv_path} already exists.")
 

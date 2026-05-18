@@ -112,6 +112,7 @@ When `traces` is omitted, all traces are exported.
 - `.op.raw` (operating point) is a separate file from `.raw` (transient/AC/DC sweep). Use `--op` to export both in a single converter call; they always produce separate CSVs.
 - Trace names are case-sensitive and must match exactly what LTspice writes (e.g., `V(vout)` not `v(vout)`). The `-d` flag reveals exact names.
 - The converter raises an error if no valid traces remain after filtering; it warns (not errors) for individual missing trace names.
+- In non-interactive runs, always pass `-f` when writing CSV output that may already exist. Without `-f`, the converter prompts interactively and exits with a clear error if stdin is unavailable.
 
 ## Testing
 

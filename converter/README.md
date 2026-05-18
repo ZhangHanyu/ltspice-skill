@@ -69,6 +69,9 @@ python ltspice_raw2csv.py simulation.raw -o
 # Explicit output path
 python ltspice_raw2csv.py simulation.raw -o output.csv
 
+# Wrong: output path is not positional
+python ltspice_raw2csv.py simulation.raw output.csv
+
 # Specific traces only (comma-separated, case-sensitive, no spaces)
 python ltspice_raw2csv.py simulation.raw -o output.csv --traces "time,V(out),I(L1)"
 
@@ -84,6 +87,8 @@ python ltspice_raw2csv.py simulation.raw -o output.csv -p 6 -f -q
 # Full float precision (backward-compatible)
 python ltspice_raw2csv.py simulation.raw -o output.csv -p 0 -f -q
 ```
+
+If the output CSV exists and `-f` is omitted, the converter prompts before overwriting. In non-interactive automation, always pass `-f`; otherwise the converter exits with a clear error.
 
 ### .STEP parameter sweeps
 
