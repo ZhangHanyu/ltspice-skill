@@ -27,6 +27,47 @@ function Get-BasePath {
   return [System.IO.Path]::Combine($directory, $stem)
 }
 
+function Test-ByteSequence {
+  param(
+    [byte[]]$Bytes,
+    [byte[]]$Sequence
+  )
+
+  if ($Bytes.Length -lt $Sequence.Length) { return $false }
+  for ($i = 0; $i -le $Bytes.Length - $Sequence.Length; $i++) {
+    $matched = $true
+    for ($j = 0; $j -lt $Sequence.Length; $j++) {
+      if ($Bytes[$i + $j] -ne $Sequence[$j]) {
+        $matched = $false
+        break
+      }
+    }
+    if ($matched) { return $true }
+  }
+  return $false
+}
+
+function Assert-LtspiceAscEncoding {
+  param([string]$Path)
+
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $badSequences = @(
+    @{ Name = "UTF-8 BOM"; Bytes = [byte[]](0xEF, 0xBB, 0xBF) },
+    @{ Name = "UTF-8 micro sign (C2 B5)"; Bytes = [byte[]](0xC2, 0xB5) },
+    @{ Name = "UTF-8 Greek mu (CE BC)"; Bytes = [byte[]](0xCE, 0xBC) },
+    @{ Name = "UTF-8 degree sign (C2 B0)"; Bytes = [byte[]](0xC2, 0xB0) },
+    @{ Name = "UTF-8 plus-minus sign (C2 B1)"; Bytes = [byte[]](0xC2, 0xB1) },
+    @{ Name = "UTF-8 Greek omega (CE A9)"; Bytes = [byte[]](0xCE, 0xA9) },
+    @{ Name = "UTF-8 ohm sign (E2 84 A6)"; Bytes = [byte[]](0xE2, 0x84, 0xA6) }
+  )
+
+  foreach ($sequence in $badSequences) {
+    if (Test-ByteSequence -Bytes $bytes -Sequence $sequence.Bytes) {
+      throw "Invalid LTspice .asc encoding in '$Path': detected $($sequence.Name). LTspice schematics must be read and written as Windows-1252, not UTF-8. Re-save the .asc as Windows-1252 before netlisting or simulating."
+    }
+  }
+}
+
 function Test-FileLockFree {
   param([string]$Path)
   if (-not (Test-Path -LiteralPath $Path)) { return $false }
@@ -203,6 +244,7 @@ try {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
   if ($extension -eq ".asc") {
+    Assert-LtspiceAscEncoding -Path $inputPath
     $deckPath = [System.IO.Path]::ChangeExtension($inputPath, ".net")
     $netlistStart = Get-Date
     Invoke-Ltspice -Arguments @("-netlist", $inputPath) -Deadline $deadline

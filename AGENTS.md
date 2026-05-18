@@ -10,6 +10,23 @@ The canonical skill definition lives in `SKILL.md` - this is what agents read to
 
 `REFERENCE.md` is the circuit syntax reference - netlist conventions, all simulation directives, all element types, waveform syntax, `.MODEL`/`.SUBCKT`, and the `.asc` file format. Load it when reading or writing circuit files.
 
+## LTspice Schematic Encoding
+
+`.asc` schematic files are Windows-1252 files. Read and write them as Windows-1252 only; never use UTF-8 for `.asc`, even when the rendered text looks correct. LTspice symbols such as `µ` must remain single-byte Windows-1252 (`0xB5`). A UTF-8 rewrite produces bytes such as `C2 B5`, which LTspice reads as `Âµ` and can silently corrupt component values during netlisting.
+
+`.net` and `.cir` files are separate from this rule. LTspice-generated `.net` files may be UTF-8, and LTspice accepts both UTF-8 and Windows-1252 for `.net` files.
+
+Use this pattern for `.asc` edits in PowerShell/.NET:
+
+```powershell
+$encoding = [System.Text.Encoding]::GetEncoding(1252)
+$text = $encoding.GetString([System.IO.File]::ReadAllBytes($ascPath))
+# edit $text here
+[System.IO.File]::WriteAllBytes($ascPath, $encoding.GetBytes($text))
+```
+
+`scripts/run_ltspice.ps1` checks `.asc` bytes before netlisting and fails fast on UTF-8 BOM or common UTF-8-encoded LTspice symbols. It does not auto-convert schematics.
+
 ## Commands
 
 **Run the converter (Python):**
@@ -68,9 +85,9 @@ Copy-Item dist\ltspice_raw2csv.exe ltspice_raw2csv.exe -Force
 
 The skill has three layers:
 
-**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (read `.net` to understand circuits, edit `.asc` to modify them, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only the runner, LTspice, and the converter may be executed).
+**Skill definition (`SKILL.md`)** - agent-facing spec. Defines inputs/outputs, the simulation procedures (standard and FRA), smart-behavior rules (read `.net` to understand circuits, edit `.asc` as Windows-1252 to modify them, auto-detect traces, check `.log` for fatal errors before converting), and security constraints (only the runner, LTspice, and the converter may be executed).
 
-**Runner (`scripts/run_ltspice.ps1`)** - PowerShell script that wraps LTspice execution. Handles two-phase `.asc` → `.net` → `.raw` flow, waits for the log completion marker (`Total elapsed time`) and confirms RAW write completion via file-lock release, scans for fatal log patterns, and returns nonzero on any failure. Use `-ExpectedOutput fra` for FRA simulations.
+**Runner (`scripts/run_ltspice.ps1`)** - PowerShell script that wraps LTspice execution. Handles two-phase `.asc` → `.net` → `.raw` flow, rejects UTF-8-corrupted `.asc` files before netlisting, waits for the log completion marker (`Total elapsed time`) and confirms RAW write completion via file-lock release, scans for fatal log patterns, and returns nonzero on any failure. Use `-ExpectedOutput fra` for FRA simulations.
 
 **Converter (`converter/ltspice_raw2csv.py`)** - reads LTspice binary `.raw` files via PyLTSpice, applies optional trace filtering, handles complex data in three modes (`ri` = real/imag columns, `ma` = magnitude/angle columns, `python` = Python complex literals), and writes CSV. Key functions: `raw_to_csv()` (main logic), `_process_trace()` (complex handling), `preview_short/detailed()` (inspection modes).
 

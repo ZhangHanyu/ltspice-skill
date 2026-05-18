@@ -41,6 +41,25 @@ Located at `{install_dir}\LTspiceHelp\`. Each `.htm` file covers one topic. Cons
 
 ---
 
+## Schematic Encoding Rule
+
+LTspice `.asc` schematic files must be read and written as Windows-1252 only. Do not use UTF-8 for `.asc`, even if the text appears correct in an editor. LTspice symbols such as `µ` must remain single-byte Windows-1252 (`0xB5`); UTF-8 bytes such as `C2 B5` are interpreted as `Âµ` and can silently corrupt values during netlisting.
+
+`.net` and `.cir` files are separate from this rule. LTspice-created `.net` files may be UTF-8, and LTspice accepts both UTF-8 and Windows-1252 for `.net` files.
+
+When editing `.asc` with PowerShell/.NET, use Windows-1252 for both read and write:
+
+```powershell
+$encoding = [System.Text.Encoding]::GetEncoding(1252)
+$text = $encoding.GetString([System.IO.File]::ReadAllBytes($ascPath))
+# edit $text here
+[System.IO.File]::WriteAllBytes($ascPath, $encoding.GetBytes($text))
+```
+
+The runner checks `.asc` bytes before netlisting and fails fast if it detects UTF-8 BOM or common UTF-8-encoded LTspice symbols. It does not auto-convert schematics; fix the source file intentionally.
+
+---
+
 ## Environment Assumptions
 
 * OS: Windows
@@ -276,6 +295,7 @@ When asked to modify a circuit before simulating:
    - Coordinates must be on the 16-unit grid
    - `SYMATTR Value` sets component values; `SYMATTR InstName` sets instance names
    - Simulation directives live in `TEXT` records: `TEXT <x> <y> Left 2 !<directive>`
+   - Read and write the `.asc` as Windows-1252 only; never save it as UTF-8
 4. **Re-run the simulation** after any modification using the standard or FRA procedure above.
 5. **Verify** by checking the `.log` for errors and inspecting the output CSV.
 
@@ -313,7 +333,7 @@ $deck = (Resolve-Path -LiteralPath ".\circuit.net").Path
 
 * Use `scripts/run_ltspice.ps1` for LTspice execution by default
 * To **read** a circuit: prefer `.net` (generate with `-netlist` if only `.asc` exists)
-* To **edit** a circuit: always use `.asc`
+* To **edit** a circuit: always use `.asc`, preserving Windows-1252 encoding
 * Let the runner generate `.net` files from `.asc` and simulate decks with `-b`
 * Auto-derive all output filenames from the simulated deck path
 * If LTspice launch behavior is unproven in the current environment, run a trivial smoke-test deck through the runner before long simulations
